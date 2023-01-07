@@ -3,11 +3,9 @@ package main
 import (
 	"bufio"
 	"context"
-	"errors"
 	"fmt"
 	"log"
 	"os"
-	"sync"
 
 	redis "github.com/go-redis/redis/v9"
 )
@@ -25,27 +23,23 @@ func main() {
 
 	// SUBSCRIBERS
 	var receivedMsg1, receivedMsg2 string
-	var wg sync.WaitGroup
 
-	wg.Add(2)
 	go func() {
-		defer wg.Done()
 		m1, err := subscriber1(rdb, channel)
 		if err != nil {
 			errChan1 <- err
-			return
 		}
+		close(errChan1)
 		receivedMsg1 = m1
 	}()
 
 	go func() {
-
-		defer wg.Done()
 		m2, err := subscriber2(rdb, channel)
 		if err != nil {
 			errChan2 <- err
-			return
+
 		}
+		close(errChan2)
 		receivedMsg2 = m2
 	}()
 
@@ -61,19 +55,17 @@ func main() {
 		log.Fatalf("failed to publish message", err.Error())
 	}
 
-	err = <-errChan1
-	if err != nil {
-		log.Println(err)
-	}
+	select {
+	case err1 := <-errChan1:
+		if err1 != nil {
+			log.Println(err1)
+		}
+	case err2 := <-errChan2:
+		if err2 != nil {
+			log.Println(err2)
+		}
 
-	err = <-errChan2
-	if err != nil {
-		log.Println(err)
 	}
-
-	wg.Wait()
-	close(errChan1)
-	close(errChan2)
 
 	log.Println("res 1: ", receivedMsg1)
 	log.Println("res 2: ", receivedMsg2)
@@ -84,7 +76,7 @@ func main() {
 func subscriber1(rdb *redis.Client, channel string) (string, error) {
 	sub := rdb.Subscribe(context.Background(), channel)
 	m, err := sub.ReceiveMessage(context.Background())
-	err = errors.New("test err from S1")
+
 	if err != nil {
 		log.Println("Error: ", err)
 		return "", err
@@ -97,7 +89,7 @@ func subscriber1(rdb *redis.Client, channel string) (string, error) {
 func subscriber2(rdb *redis.Client, channel string) (string, error) {
 	sub := rdb.Subscribe(context.Background(), channel)
 	m, err := sub.ReceiveMessage(context.Background())
-	err = errors.New("test err from S2")
+
 	if err != nil {
 		log.Println("Error: ", err)
 		return "", err
